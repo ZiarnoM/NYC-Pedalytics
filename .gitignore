@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project data
+data/
+output/
+
+# macOS
+.DS_Store
+
+# Docker volumes
+docker/hadoop-data/
+docker/spark-data/
+docker/checkpoint/
