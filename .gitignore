@@ -229,3 +229,4 @@ output/
 docker/hadoop-data/
 docker/spark-data/
 docker/checkpoint/
+.idea
