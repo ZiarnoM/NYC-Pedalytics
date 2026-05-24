@@ -219,6 +219,7 @@ __marimo__/
 
 # Project data
 data/
+csv/
 output/
 
 # macOS

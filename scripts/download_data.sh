@@ -8,7 +8,7 @@
 BASE_URL="https://s3.amazonaws.com/tripdata"
 
 # Directory where this script lives
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DATA_DIR="${SCRIPT_DIR}/data"
 mkdir -p "$DATA_DIR"
 
