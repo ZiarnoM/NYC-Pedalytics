@@ -3,7 +3,7 @@ from pyspark.sql import functions as F
 
 spark = SparkSession.builder \
     .appName("circular-trips") \
-    .getOrCreate()
+        .getOrCreate()
 
 df = spark.read \
     .option("header", "true") \

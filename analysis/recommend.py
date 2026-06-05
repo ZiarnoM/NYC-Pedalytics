@@ -3,6 +3,7 @@ from pyspark.sql import functions as F
 
 spark = SparkSession.builder \
     .appName("bike-recommend") \
+    .master("spark://spark-master:7077") \
     .getOrCreate()
 
 df = spark.read \
@@ -29,82 +30,75 @@ starts = df.groupBy("start_hour", "member_casual", "start_station_name") \
 ends = df.groupBy("end_hour", "member_casual", "end_station_name") \
     .agg(F.count("*").alias("ends"))
 
-# join starts and ends
-net = starts.alias("s").join(
-    ends.alias("e"),
-    (F.col("s.start_hour") == F.col("e.end_hour")) &
-    (F.col("s.member_casual") == F.col("e.member_casual")) &
-    (F.col("s.start_station_name") == F.col("e.end_station_name")),
-    "outer"
-)
+starts_rows = starts.collect()
+ends_rows = ends.collect()
 
-# fill nulls and compute net inflow
-net = net.withColumn("hour", F.coalesce(F.col("s.start_hour"), F.col("e.end_hour")))
-net = net.withColumn("user_type", F.coalesce(F.col("s.member_casual"), F.col("e.member_casual")))
-net = net.withColumn("station", F.coalesce(F.col("s.start_station_name"), F.col("e.end_station_name")))
-net = net.fillna(0, subset=["starts", "ends"])
-net = net.withColumn("net_inflow", F.col("ends") - F.col("starts"))
-net = net.withColumn("total_activity", F.col("starts") + F.col("ends"))
+# merge in Python — no expensive Spark join
+from collections import defaultdict
 
-# filter to stations with enough activity (at least 20 combined starts+ends at that hour)
-net = net.filter(F.col("total_activity") > 20)
+# key: (hour, user_type, station)
+net = defaultdict(lambda: {"starts": 0, "ends": 0})
 
-# for each (hour, user_type), pick the station with highest net_inflow
-from pyspark.sql.window import Window
+for row in starts_rows:
+    key = (int(row.start_hour), row.member_casual, row.start_station_name)
+    net[key]["starts"] += int(row.starts)
 
-rec_window = Window.partitionBy("hour", "user_type").orderBy(F.desc("net_inflow"))
-best = net.withColumn("rank", F.row_number().over(rec_window)) \
-    .filter(F.col("rank") == 1) \
-    .drop("rank") \
-    .select("hour", "user_type", "station", "net_inflow", "starts", "ends", "total_activity") \
-    .orderBy("hour", "user_type")
+for row in ends_rows:
+    key = (int(row.end_hour), row.member_casual, row.end_station_name)
+    net[key]["ends"] += int(row.ends)
 
-# also get top 5 per combo for more context
-top5_window = Window.partitionBy("hour", "user_type").orderBy(F.desc("net_inflow"))
-top5 = net.withColumn("rank", F.row_number().over(top5_window)) \
-    .filter(F.col("rank") <= 5) \
-    .drop("rank")
+# compute scores and filter by activity
+entries = []
+for (hour, user_type, station), counts in net.items():
+    total = counts["starts"] + counts["ends"]
+    if total > 20:
+        entries.append({
+            "hour": hour,
+            "user_type": user_type,
+            "station": station,
+            "score": counts["ends"] - counts["starts"],
+            "starts": counts["starts"],
+            "ends": counts["ends"]
+        })
 
-rows = best.collect()
-top5_rows = top5.orderBy("hour", "user_type", F.desc("net_inflow")).collect()
+# group by hour + user_type, sort by score desc
+from collections import defaultdict
+by_combo = defaultdict(list)
+for e in entries:
+    by_combo[(e["hour"], e["user_type"])].append(e)
+
+for combo in by_combo:
+    by_combo[combo].sort(key=lambda x: x["score"], reverse=True)
 
 import json
 import os
 
 output = {}
+top5_data = defaultdict(dict)
 
-for row in rows:
-    h = str(int(row.hour))
-    if h not in output:
-        output[h] = {}
-    output[h][row.user_type] = {
-        "station": row.station,
-        "net_inflow": int(row.net_inflow),
-        "starts": int(row.starts),
-        "ends": int(row.ends)
+for (hour, user_type), stations in by_combo.items():
+    best = stations[0]
+    h_str = str(hour)
+    if h_str not in output:
+        output[h_str] = {}
+    output[h_str][user_type] = {
+        "station": best["station"],
+        "score": best["score"],
+        "starts": best["starts"],
+        "ends": best["ends"]
     }
-
-# add top 5 alternatives
-top5_data = {}
-for row in top5_rows:
-    h = str(int(row.hour))
-    ut = row.user_type
-    key = f"{h}|{ut}"
-    if key not in top5_data:
-        top5_data[key] = []
-    top5_data[key].append({
-        "station": row.station,
-        "net_inflow": int(row.net_inflow),
-        "starts": int(row.starts),
-        "ends": int(row.ends)
-    })
+    top5 = stations[:5]
+    top5_data[h_str][user_type] = [
+        {"station": s["station"], "score": s["score"], "starts": s["starts"], "ends": s["ends"]}
+        for s in top5
+    ]
 
 os.makedirs("/app/output", exist_ok=True)
 with open("/app/output/recommendations.json", "w") as f:
     json.dump(output, f, indent=2)
 
 with open("/app/output/recommendations_top5.json", "w") as f:
-    json.dump(top5_data, f, indent=2)
+    json.dump(dict(top5_data), f, indent=2)
 
 print(f"Wrote recommendations.json — {len(output)} hours with recommendations")
 print(f"Wrote recommendations_top5.json — top 5 alternatives per combo")

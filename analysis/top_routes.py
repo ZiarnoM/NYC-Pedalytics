@@ -3,7 +3,7 @@ from pyspark.sql import functions as F
 
 spark = SparkSession.builder \
     .appName("top-routes") \
-    .getOrCreate()
+        .getOrCreate()
 
 df = spark.read \
     .option("header", "true") \

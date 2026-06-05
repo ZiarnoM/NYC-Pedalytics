@@ -23,13 +23,13 @@ df = df.withColumn("duration_secs",
 # filter bad durations
 df = df.filter((F.col("duration_secs") > 0) & (F.col("duration_secs") < 86400))
 
-# 1. duration percentiles by bike type
+# 1. duration percentiles by bike type (percentile_approx = t-digest, much faster)
 bike_dur = df.groupBy("rideable_type") \
     .agg(
         F.count("*").alias("rides"),
         F.round(F.avg("duration_secs") / 60, 1).alias("avg_min"),
-        F.round(F.expr("percentile(duration_secs, 0.5)") / 60, 1).alias("median_min"),
-        F.round(F.expr("percentile(duration_secs, 0.95)") / 60, 1).alias("p95_min")
+        F.round(F.expr("percentile_approx(duration_secs, 0.5, 10000)") / 60, 1).alias("median_min"),
+        F.round(F.expr("percentile_approx(duration_secs, 0.95, 10000)") / 60, 1).alias("p95_min")
     ) \
     .orderBy("rideable_type")
 
@@ -38,13 +38,16 @@ bike_user_dur = df.groupBy("rideable_type", "member_casual") \
     .agg(
         F.count("*").alias("rides"),
         F.round(F.avg("duration_secs") / 60, 1).alias("avg_min"),
-        F.round(F.expr("percentile(duration_secs, 0.5)") / 60, 1).alias("median_min"),
-        F.round(F.expr("percentile(duration_secs, 0.95)") / 60, 1).alias("p95_min")
+        F.round(F.expr("percentile_approx(duration_secs, 0.5, 10000)") / 60, 1).alias("median_min"),
+        F.round(F.expr("percentile_approx(duration_secs, 0.95, 10000)") / 60, 1).alias("p95_min")
     ) \
     .orderBy("rideable_type", "member_casual")
 
-# 3. overall distribution: deciles
-deciles = df.approxQuantile("duration_secs", [0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99], 0.01)
+# 3. overall distribution: deciles (use percentile_approx — much faster than approxQuantile)
+overall = df.agg(
+    F.expr("percentile_approx(duration_secs, array(0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99), 10000)").alias("deciles")
+)
+deciles = overall.collect()[0][0]
 
 # collect
 bike_rows = bike_dur.collect()

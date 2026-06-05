@@ -3,6 +3,7 @@ from pyspark.sql import functions as F
 
 spark = SparkSession.builder \
     .appName("yoy-growth") \
+    .master("spark://spark-master:7077") \
     .getOrCreate()
 
 df = spark.read \
