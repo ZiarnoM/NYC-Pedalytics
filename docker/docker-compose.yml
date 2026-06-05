@@ -29,6 +29,20 @@ services:
     networks:
       - hadoop-net
 
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    restart: always
+    depends_on:
+      - namenode
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    volumes:
+      - hadoop_datanode2:/hadoop/dfs/data
+    networks:
+      - hadoop-net
+
   spark-master:
     image: bde2020/spark-master:3.2.1-hadoop3.2
     container_name: spark-master
@@ -52,6 +66,25 @@ services:
       - spark-master
     environment:
       - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=4
+      - SPARK_WORKER_MEMORY=2g
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    volumes:
+      - ../analysis:/app/analysis
+      - ../output:/app/output
+    networks:
+      - hadoop-net
+
+  spark-worker2:
+    image: bde2020/spark-worker:3.2.1-hadoop3.2
+    container_name: spark-worker2
+    restart: always
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=4
+      - SPARK_WORKER_MEMORY=2g
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
     volumes:
       - ../analysis:/app/analysis
@@ -62,6 +95,7 @@ services:
 volumes:
   hadoop_namenode:
   hadoop_datanode:
+  hadoop_datanode2:
 
 networks:
   hadoop-net:
