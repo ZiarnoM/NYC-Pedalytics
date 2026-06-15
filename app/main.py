@@ -52,17 +52,18 @@ def show_bike_type_trends():
     print(f"  {'Month':<8} {'Total':>10} {'Classic':>10} {'Electric':>10} {'Electric %':>10}")
     print(f"  {'-'*8} {'-'*10} {'-'*10} {'-'*10} {'-'*10}")
     for row in data["monthly_summary"]:
-        total = row["rides"]
-        classic = row.get("classic_bike", 0)
-        electric = row.get("electric_bike", 0)
-        pct = electric / total * 100 if total > 0 else 0
-        print(f"  {row['month']:<8} {total:>10,} {classic:>10,} {electric:>10,} {pct:>9.1f}%")
+        ym = row["ym"]
+        total = row["total_rides"]
+        classic = row["classic"]
+        electric = row["electric"]
+        pct = row["pct_electric"]
+        print(f"  {ym:<8} {total:>10,} {classic:>10,} {electric:>10,} {pct:>9.1f}%")
 
     print_header("Bike Type by User Type (Latest Month)")
-    latest = data["monthly_detail"][-1]["month"] if data["monthly_detail"] else "?"
+    latest = data["monthly_detail"][-1]["ym"] if data["monthly_detail"] else "?"
     print(f"  Month: {latest}")
     for row in data["monthly_detail"]:
-        if row["month"] == latest:
+        if row["ym"] == latest:
             print(f"  {row['member_casual']:<8} {row['rideable_type']:<15} {row['rides']:>10,}")
 
 
@@ -78,12 +79,15 @@ def show_user_patterns():
         print(f"  {utype:<10} {info['total_rides']:>14,} {info['avg_duration_min']:>20.1f}")
 
     print_header("Rides by Day of Week")
+    day_map = {"Monday": "Mon", "Tuesday": "Tue", "Wednesday": "Wed",
+               "Thursday": "Thu", "Friday": "Fri", "Saturday": "Sat", "Sunday": "Sun"}
     days_member = {d["day"]: d["rides"] for d in data["by_day"]["member"]}
     days_casual = {d["day"]: d["rides"] for d in data["by_day"]["casual"]}
     print(f"  {'Day':<10} {'Member':>12} {'Casual':>12}")
     print(f"  {'-'*10} {'-'*12} {'-'*12}")
-    for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
-        print(f"  {day:<10} {days_member.get(day, 0):>12,} {days_casual.get(day, 0):>12,}")
+    for full_day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]:
+        short = day_map[full_day]
+        print(f"  {short:<10} {days_member.get(full_day, 0):>12,} {days_casual.get(full_day, 0):>12,}")
 
     print_header("Weekend vs Weekday")
     for utype in ["member", "casual"]:
@@ -163,7 +167,7 @@ def show_top_routes():
     print(f"  {'#':<4} {'From':<30} -> {'To':<30} {'Rides':>10}")
     print(f"  {'-'*4} {'-'*30} -> {'-'*30} {'-'*10}")
     for i, r in enumerate(data["top_oneway"][:15], 1):
-        print(f"  {i:<4} {r['start_station'][:30]:<30} -> {r['end_station'][:30]:<30} {r['rides']:>10,}")
+        print(f"  {i:<4} {r['from'][:30]:<30} -> {r['to'][:30]:<30} {r['rides']:>10,}")
 
     print_header("Top 10 Circular Routes (A -> A)")
     for i, r in enumerate(data["top_circular"][:10], 1):
@@ -171,7 +175,8 @@ def show_top_routes():
 
     print_header("Most Asymmetric Routes (one direction dominates)")
     for i, r in enumerate(data["asymmetric_routes"][:10], 1):
-        print(f"  {r['route'][:55]:55} ratio={r['ratio']:.1f}:1")
+        route = f"{r['station_a']} -> {r['station_b']}"
+        print(f"  {route[:55]:55} ratio={r['asymmetry_pct']:.1f}:1")
 
 
 def show_seasonal_impact():
@@ -212,7 +217,7 @@ def show_circular_trips():
     for utype, info in data["by_user_type"].items():
         total = info["total_rides"]
         circ = info["circular_rides"]
-        rate = info["circular_rate_pct"]
+        rate = info["pct_circular"]
         print(f"  {utype:<10} {circ:>10,} / {total:>10,} = {rate:.1f}% circular")
 
     print_header("Duration Comparison (Circular vs One-Way)")
@@ -226,7 +231,7 @@ def show_circular_trips():
 
     print_header("Top 15 Stations by Circular Trip Rate")
     for i, s in enumerate(data["top_by_rate"][:15], 1):
-        print(f"  {i:2}. {s['station'][:45]:45} {s['circular_rate_pct']:.1f}% circular "
+        print(f"  {i:2}. {s['station'][:45]:45} {s['pct_circular']:.1f}% circular "
               f"({s['circular_rides']:,} of {s['total_rides']:,})")
 
 
@@ -251,23 +256,18 @@ def show_recommendation():
         print("  Invalid input.")
         return
 
-    user_type = input("  User type (member/casual): ").strip().lower()
-    if user_type not in ("member", "casual"):
-        print("  Invalid user type. Use 'member' or 'casual'.")
-        return
-
     h = str(hour)
     if h not in data:
         print(f"  No data for hour {hour}.")
         return
 
-    best = data[h].get(user_type)
-    if not best:
-        print(f"  No recommendation for {user_type} at hour {hour}.")
+    best = data[h]
+    if not best or not best.get("station"):
+        print(f"  No recommendation for hour {hour}.")
         return
 
     print()
-    print(f"  Best station for a {user_type} at {hour:02d}:00:")
+    print(f"  Best station at {hour:02d}:00:")
     print(f"    {best['station']}")
     print(f"    Net inflow score: {best['score']:+,}")
     if best["score"] > 0:
@@ -276,11 +276,12 @@ def show_recommendation():
         print(f"    (More trips start here than end — bikes may be scarce)")
 
     # show top 5
-    if top5 and h in top5 and user_type in top5[h]:
+    if top5 and h in top5:
         print()
         print(f"  Top 5 alternatives:")
-        for i, s in enumerate(top5[h][user_type], 1):
-            print(f"    {i}. {s['station'][:50]:50} score={s['score']:+,}")
+        for i, s in enumerate(top5[h], 1):
+            name = s.get("station") or "(unknown station)"
+            print(f"    {i}. {name[:50]:50} score={s['score']:+,}")
 
 
 def show_menu():

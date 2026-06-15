@@ -4,6 +4,7 @@ from pyspark.sql import functions as F
 spark = SparkSession.builder \
     .appName("bike-type-trends") \
     .master("spark://spark-master:7077") \
+    .config("spark.executor.memory", "2g") \
     .getOrCreate()
 
 df = spark.read \

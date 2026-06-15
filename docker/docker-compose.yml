@@ -9,6 +9,7 @@ services:
     environment:
       - CLUSTER_NAME=hadoop-cluster
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=2
     volumes:
       - hadoop_namenode:/hadoop/dfs/name
       - ../csv:/mnt/csv
@@ -40,6 +41,20 @@ services:
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
     volumes:
       - hadoop_datanode2:/hadoop/dfs/data
+    networks:
+      - hadoop-net
+
+  datanode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode3
+    restart: always
+    depends_on:
+      - namenode
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    volumes:
+      - hadoop_datanode3:/hadoop/dfs/data
     networks:
       - hadoop-net
 
@@ -96,6 +111,7 @@ volumes:
   hadoop_namenode:
   hadoop_datanode:
   hadoop_datanode2:
+  hadoop_datanode3:
 
 networks:
   hadoop-net:

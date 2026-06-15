@@ -28,7 +28,7 @@ def should_skip(fname):
     return False
 
 
-def extract_csv_from_zip(zf, member_name, dst_dir):
+def extractIcsv_from_zip(zf, member_name, dst_dir):
     """Extract a single CSV entry to dst_dir, return True if extracted."""
     global total_csvs, total_skipped
 
@@ -75,7 +75,9 @@ for zip_path in zips:
                     with zipfile.ZipFile(nested_bytes, "r") as inner_zf:
                         for inner_entry in inner_zf.namelist():
                             inner_name = os.path.basename(inner_entry)
-                            if inner_entry.startswith("__MACOSX") or inner_name.startswith("._"):
+                            if inner_entry.startswith(
+                                "__MACOSX"
+                            ) or inner_name.startswith("._"):
                                 continue
                             if inner_entry.endswith("/") or inner_name == ".DS_Store":
                                 continue

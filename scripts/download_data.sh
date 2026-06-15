@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# Download Citi Bike NYC trip data (2023 + 2024)
-# 2023: yearly bundle (~1.6 GB)
-# 2024: 12 monthly files (~8.7 GB total)
-# Total: ~10.3 GB compressed
-
 BASE_URL="https://s3.amazonaws.com/tripdata"
 
 # Directory where this script lives
